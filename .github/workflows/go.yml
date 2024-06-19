@@ -1,0 +1,59 @@
+name: Go
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.18'
+
+      - name: Build binary
+        run: |
+          mkdir -p bin
+          GOOS=${{ matrix.os == 'ubuntu-latest' && 'linux' || matrix.os == 'macos-latest' && 'darwin' || 'windows' }}
+          GOARCH=${{ matrix.arch }}
+          OUTPUT_NAME=${{ env.PROJECT_NAME }}-${GOOS}-${GOARCH}
+          if [ $GOOS = "windows" ]; then
+            OUTPUT_NAME+='.exe'
+          fi
+          go build -o bin/${OUTPUT_NAME}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}-binary
+          path: bin/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}-binary
+          path: bin/
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref }}
+          name: Release ${{ github.ref }}
+          body: |
+            Automated release from GitHub Actions.
+          files: bin/*
+          token: ${{ secrets.GITHUB_TOKEN }}
