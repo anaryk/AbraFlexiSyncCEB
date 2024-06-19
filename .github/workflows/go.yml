@@ -1,4 +1,4 @@
-name: Go
+name: Release
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -19,12 +19,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version: '1.18'
+          go-version: '1.22'
 
       - name: Build binary
         run: |
           mkdir -p bin
-          GOOS=${{ matrix.os == 'ubuntu-latest' && 'linux' || matrix.os == 'macos-latest' && 'darwin' || 'windows' }}
+          GOOS=$(echo ${{ matrix.os }} | cut -d '-' -f 1)
           GOARCH=${{ matrix.arch }}
           OUTPUT_NAME=${{ env.PROJECT_NAME }}-${GOOS}-${GOARCH}
           if [ $GOOS = "windows" ]; then
@@ -39,18 +39,22 @@ jobs:
           path: bin/
 
   release:
-    needs: build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        arch: [amd64, arm64]
+    needs: build
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v2
-        with:
-          name: ${{ matrix.os }}-${{ matrix.arch }}-binary
-          path: bin/
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Download all artifacts
+        run: |
+          for os in ubuntu-latest macos-latest windows-latest; do
+            for arch in amd64 arm64; do
+              artifact_name="${os}-${arch}-binary"
+              echo "Downloading $artifact_name"
+              mkdir -p bin
+              gh run download ${{ github.run_id }} --name $artifact_name --dir bin/
+            done
+          done
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
