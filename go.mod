@@ -1,6 +1,6 @@
 module git.maxadmin.io/infra/abra-account-sync
 
-go 1.21.6
+go 1.22
 
 require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
