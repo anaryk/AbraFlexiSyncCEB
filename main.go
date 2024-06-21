@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -89,12 +90,14 @@ func loadCentralConfig(configPath string) (*CentralConfig, error) {
 }
 
 func processFiles(directory string, config *Config) error {
+	var foundGPCFile bool
 	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".GPC") || strings.HasSuffix(info.Name(), ".gpc")) {
+			foundGPCFile = true
 			fileContent, err := os.ReadFile(path)
 			if err != nil {
 				return err
@@ -143,6 +146,53 @@ func processFiles(directory string, config *Config) error {
 
 		return nil
 	})
+
+	if foundGPCFile {
+		log.Info().Msgf("GPC Files found and uploaded. Starting automatic bank pairing for directory: %s", directory)
+		// Use regex to extract the base URL
+		re := regexp.MustCompile(`^(https:\/\/[^\/]+\/c\/[^\/]+\/)`)
+		matches := re.FindStringSubmatch(config.URL)
+		if len(matches) < 2 {
+			return fmt.Errorf("failed to extract base URL from %s", config.URL)
+		}
+		baseURL := matches[1]
+		pairingURL := baseURL + "banka/automaticke-parovani"
+
+		req, err := http.NewRequest("PUT", pairingURL, nil)
+		if err != nil {
+			return err
+		}
+
+		auth := config.Username + ":" + config.Password
+		encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+		req.Header.Add("Authorization", "Basic "+encodedAuth)
+		req.Header.Add("Content-Type", "application/xml")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			var response Response
+			err := xml.NewDecoder(resp.Body).Decode(&response)
+			if err != nil {
+				return err
+			}
+
+			if response.Success {
+				log.Info().Msgf("Successfully paired transactions for directory: %s", directory)
+				log.Info().Msgf("Pairing Stats - Created: %d, Updated: %d, Deleted: %d, Skipped: %d, Failed: %d",
+					response.Stats.Created, response.Stats.Updated, response.Stats.Deleted, response.Stats.Skipped, response.Stats.Failed)
+			} else {
+				log.Warn().Msgf("Failed to pair transactions for directory: %s, success: %t", directory, response.Success)
+			}
+		} else {
+			log.Warn().Msgf("Failed to pair transactions for directory: %s, status code: %d", directory, resp.StatusCode)
+		}
+	}
 
 	return err
 }
