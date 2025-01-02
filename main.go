@@ -233,7 +233,7 @@ func processPaymentOrders(directory string, config *Config) error {
 
 	for _, order := range paymentOrderResponse.Winstrom.PaymentOrders {
 		orderID := order.ID
-		orderURL := fmt.Sprintf("%s/prikaz-k-uhrade/%s/stazeni?dat-splat-z-hlavicky=true", config.URL, orderID)
+		orderURL := fmt.Sprintf("%s/prikaz-k-uhrade/%s/stazeni?dat-splat-z-hlavicky=false", config.URL, orderID)
 		req, err := http.NewRequest("GET", orderURL, nil)
 		if err != nil {
 			return err
